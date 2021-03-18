@@ -137,8 +137,12 @@ class Test(QGraphicsView):
 
         if(self.delete):
             i = MainWindowSlots.findDot(self.points, self.mouse_posX, self.mouse_posY)
-            self.scene.removeItem(self.points[i])
-            self.points.pop(i)
+            if i != None:
+                self.scene.removeItem(self.points[i])
+                self.points.pop(i)
+            if( self.drawedPath != None and len(self.points) < 3):
+                self.scene.removeItem(self.drawedPath)
+                self.update() 
         
     
     def mouseReleaseEvent(self, QMouseEvent):
@@ -150,7 +154,7 @@ class Test(QGraphicsView):
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        if((len(self.points) > 2) and not (self.redact)):
+        if((len(self.points) > 2) ): #and not (self.redact)
             points = []
             for i in range(len(self.points)):
                 points.append(QPoint(self.points[i].pos().x(),self.points[i].pos().y()))
@@ -161,32 +165,30 @@ class Test(QGraphicsView):
             painter.setBrush(QBrush(Qt.red, Qt.NoBrush))
             path.moveTo(points[0])
 
-            factor = self.path = QtGui.QPainterPath(points[0])
-            print(factor)
             for p, current in enumerate(points[1:-1], 1):
-                print(p)
-                print(current)
+                #print(p)
+                #print(current)
                 # previous segment - серая линия
                 source = QtCore.QLineF(points[p - 1], current)
-                print(source.length())
+                #print(source.length())
                 # next segment - серая линия
                 target = QtCore.QLineF(current, points[p + 1])
-                print(target.length())
+                #print(target.length())
                 targetAngle = target.angleTo(source)
-                print(targetAngle)
+                #print(targetAngle)
                 if targetAngle > 180:
                     angle = (source.angle() + source.angleTo(target) / 2) % 360
                 else:
                     angle = (target.angle() + target.angleTo(source) / 2) % 360
 
-                print(target.angle())
-                print(angle)
+                #print(target.angle())
+                #print(angle)
                 prop = 1/3
-                print(prop)
+                #print(prop)
 
                 revTarget = QtCore.QLineF.fromPolar(source.length() * prop, angle + 180).translated(current)
                 cp2 = revTarget.p2()
-                print(cp2)
+                #print(cp2)
 
                 if p == 1:
                     path.quadTo(cp2, current)
@@ -195,7 +197,7 @@ class Test(QGraphicsView):
 
                 revSource = QtCore.QLineF.fromPolar(target.length() * prop, angle).translated(current)
                 cp1 = revSource.p2()
-                print(cp1)
+                #print(cp1)
 
             # the final curve, that joins to the last point
             path.quadTo(cp1, points[-1])
