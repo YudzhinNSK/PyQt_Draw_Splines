@@ -39,7 +39,7 @@ class MovingObject(QGraphicsEllipseItem):
     def __init__(self, x, y, r):
         super().__init__(0, 0, r, r)
         self.setPos(x, y)
-        self.setBrush(Qt.blue)
+        self.setBrush(Qt.red)
         self.setAcceptHoverEvents(True)
         self.redact = False
 
@@ -55,7 +55,7 @@ class MovingObject(QGraphicsEllipseItem):
 
 
     def mouseMoveEvent(self, event):        
-        super().mousePressEvent(event)
+        super().mouseMoveEvent(event)
         if(self.redact):
             orig_cursor_position = event.lastScenePos()
             updated_cursor_position = event.scenePos()
@@ -67,7 +67,20 @@ class MovingObject(QGraphicsEllipseItem):
             self.setPos(QPointF(updated_cursor_x, updated_cursor_y))
 
     def mouseReleaseEvent(self, event):
-        super().mouseReleaseEvent(event)        
+        super().mouseReleaseEvent(event) 
+        
+
+class RunObject(QGraphicsEllipseItem):
+    def __init__(self, x, y, r, parent1, parent2):
+        super().__init__(0, 0, r, r)
+        self.setPos(x, y)
+        self.setBrush(Qt.blue)
+        self.parent1 = parent1
+        self.parent2 = parent2
+
+    
+
+
 
 class Test(QGraphicsView):
     def __init__(self, label):
@@ -77,7 +90,19 @@ class Test(QGraphicsView):
         self.points = []
         self.isDraw = False
         self.drawedPath = None
-        self.label = label
+        self.label = label        
+        self.radius = 5
+        self.lines_onScene = []
+        self.lines = []
+        self.inner_lines = []
+        self.dots = []
+        self.inner_dots = []
+        self.step = 1;
+        self.max_step = 1000
+        self.par_step = 0.001
+        self.rev = 1
+        self.bezier_path = []
+        self.changed = True
 
     def initUI(self):     
         self.scene = QGraphicsScene()
@@ -119,12 +144,12 @@ class Test(QGraphicsView):
             self.delete = True
             self.label.setText("Режим: удаления точек")
 
+
     def mousePressEvent(self, QMouseEvent):
         super().mousePressEvent(QMouseEvent)
         self.mouse_posX = QMouseEvent.pos().x() + 80
         self.mouse_posY = QMouseEvent.pos().y() + 70
         self.pressing = True
-        
         self.update()
                 
         if not self.mouse_posX or not self.pressing:
@@ -134,79 +159,171 @@ class Test(QGraphicsView):
             self.obj = MovingObject(self.mouse_posX, self.mouse_posY, 12)
             self.scene.addItem(self.obj)
             self.points.append(self.obj)
+            self.changed = True
 
-        if(self.delete):
+        if(self.delete):        
             i = MainWindowSlots.findDot(self.points, self.mouse_posX, self.mouse_posY)
             if i != None:
                 self.scene.removeItem(self.points[i])
                 self.points.pop(i)
-            if( self.drawedPath != None and len(self.points) < 3):
+            if(self.drawedPath != None and len(self.points) < 3):
                 self.scene.removeItem(self.drawedPath)
                 self.update() 
+            if(self.lines_onScene != None and len(self.points) == 1):
+                self.scene.removeItem(self.lines_onScene[0])
+                self.update()                
+            self.changed = True
         
+    def del_bez(self):
+        if(self.bezier_path != None):
+            for i in range(len(self.bezier_path) - 1):
+                self.scene.removeItem(self.bezier_path[i])
+
+
+    def draw_bez(self):
+        self.bezier_points = self.get_bezier_points()
+        if(self.bezier_points != None):
+            for i in range(len(self.bezier_points) - 1):
+                self.bezier_path.append(self.scene.addLine(QLineF(self.bezier_points[i].x() + 6, self.bezier_points[i].y() + 6,
+                         self.bezier_points[i + 1].x()+ 6, self.bezier_points[i + 1].y() + 6), QPen(QtCore.Qt.blue)))
+            
+        self.update()
     
     def mouseReleaseEvent(self, QMouseEvent):
         super().mouseReleaseEvent(QMouseEvent)   
         self.pressing = False
         self.update()
-
-
+        self.changed = True
+        
+    def get_bezier_points(self):
+        par = 0.0
+        bezier_points = []
+        while par < 1:
+            buffer_points = self.points
+            while len(buffer_points) != 1:
+                next_points = []
+                for i in range(0, len(buffer_points) - 1):                    
+                    point = [buffer_points[i].x() + par * (buffer_points[i + 1].x() - buffer_points[i].x()),
+                             buffer_points[i].y() + par * (buffer_points[i + 1].y() - buffer_points[i].y())]
+                    next_points.append(QPoint(int(point[0]),int(point[1])))
+                buffer_points = next_points
+            bezier_points.append(buffer_points[0])
+            par = par + self.par_step
+        return bezier_points
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        if((len(self.points) > 2) ): #and not (self.redact)
-            points = []
-            for i in range(len(self.points)):
-                points.append(QPoint(self.points[i].pos().x(),self.points[i].pos().y()))
-
-            painter = QPainter(self)        
-            path = QPainterPath()
-            painter.setPen(QtCore.Qt.blue)
-            painter.setBrush(QBrush(Qt.red, Qt.NoBrush))
-            path.moveTo(points[0])
-
-            for p, current in enumerate(points[1:-1], 1):
-                #print(p)
-                #print(current)
-                # previous segment - серая линия
-                source = QtCore.QLineF(points[p - 1], current)
-                #print(source.length())
-                # next segment - серая линия
-                target = QtCore.QLineF(current, points[p + 1])
-                #print(target.length())
-                targetAngle = target.angleTo(source)
-                #print(targetAngle)
-                if targetAngle > 180:
-                    angle = (source.angle() + source.angleTo(target) / 2) % 360
-                else:
-                    angle = (target.angle() + target.angleTo(source) / 2) % 360
-
-                #print(target.angle())
-                #print(angle)
-                prop = 1/3
-                #print(prop)
-
-                revTarget = QtCore.QLineF.fromPolar(source.length() * prop, angle + 180).translated(current)
-                cp2 = revTarget.p2()
-                #print(cp2)
-
-                if p == 1:
-                    path.quadTo(cp2, current)
-                else:
-                    path.cubicTo(cp1, cp2, current)
-
-                revSource = QtCore.QLineF.fromPolar(target.length() * prop, angle).translated(current)
-                cp1 = revSource.p2()
-                #print(cp1)
-
-            # the final curve, that joins to the last point
-            path.quadTo(cp1, points[-1])
+        if( len(self.lines_onScene) == len(self.points) == 1):
+            if(self.changed):                
+                self.del_bez()
+                self.changed = False
+            for j in range(len(self.lines_onScene)):
+                self.scene.removeItem(self.lines_onScene[j])
+            for j in range(len(self.dots)):
+                self.scene.removeItem(self.dots[j])
+                
+            for j in range(len(self.inner_lines)):
+                self.scene.removeItem(self.inner_lines[j])
+            self.lines = []
+            self.lines_onScene = []
+            self.dots = []                
+            self.inner_dots = []                
+        
+        if(len(self.points) == 2):
+            if(self.changed):                
+                self.del_bez()
+                self.changed = False
+            if((self.isDraw) and (self.lines_onScene != None)):
+                for j in range(len(self.lines_onScene)):
+                    self.scene.removeItem(self.lines_onScene[j])
+                for j in range(len(self.dots)):
+                    self.scene.removeItem(self.dots[j])
+                
+                for j in range(len(self.inner_lines)):
+                    self.scene.removeItem(self.inner_lines[j])
+                
+                self.lines = []
+                self.lines_onScene = []
+                self.dots = []                
+                self.inner_dots = []
+            self.isDraw = True
+            self.pen = QPen(QColor(0, 0, 0))
+            self.pen.setWidth(2)
+            self.lines.append(QLineF(self.points[0].x() + 6,self.points[0].y() + 6, self.points[1].x() + 6,self.points[1].y() + 6))
+            if(len(self.lines_onScene) > 0):
+                self.lines_onScene[0] = self.scene.addLine(self.lines[0],self.pen)
+            else:
+                self.lines_onScene.append(self.scene.addLine(self.lines[len(self.lines)-1], self.pen))
             
-            if((self.isDraw) and (self.drawedPath != None)):
-                self.scene.removeItem(self.drawedPath)
-            self.drawedPath = self.scene.addPath(path,QtCore.Qt.blue,QBrush(Qt.red, Qt.NoBrush))
+            step = (self.lines[0].p2() - self.lines[0].p1())/self.max_step
+            if(self.rev > 0):
+                    self.dot = self.scene.addEllipse(self.lines[0].x1() + self.step * step.x() * self.rev - 6,self.lines[0].y1() + self.step * step.y() * self.rev - 6, 12, 12, self.pen,QBrush(QtCore.Qt.green, style = QtCore.Qt.SolidPattern))
+            else:
+                self.dot = self.scene.addEllipse(self.lines[0].x2() + self.step * step.x() * self.rev - 6,self.lines[0].y2() + self.step * step.y() * self.rev - 6, 12, 12, self.pen,QBrush(QtCore.Qt.green, style = QtCore.Qt.SolidPattern))
+            self.dots.append(self.dot)
+        elif((len(self.points) > 2) ): #and not (self.redact)
+            if(self.changed):                
+                self.del_bez()
+                self.draw_bez()
+                self.changed = False
+            if(self.isDraw):
+                for j in range(len(self.lines_onScene)):
+                    self.scene.removeItem(self.lines_onScene[j])
+                for j in range(len(self.dots)):
+                    self.scene.removeItem(self.dots[j])
+                
+                for j in range(len(self.inner_lines)):
+                    self.scene.removeItem(self.inner_lines[j])
+
+                self.lines = []
+                self.lines_onScene = []
+                self.dots = []                
+                self.inner_dots = []
+            for i in range(len(self.points) - 1):
+                self.lines.append(QLineF(self.points[i].x() + 6,self.points[i].y() + 6, self.points[i + 1].x() + 6,self.points[i + 1].y() + 6))
+                self.lines_onScene.append(self.scene.addLine(self.lines[i],self.pen))
+                step = (self.lines[i].p2() - self.lines[i].p1())/self.max_step
+                if(self.rev > 0):
+                    self.inner_dots.append(QPointF(self.lines[i].x1() + self.step * step.x() * self.rev - 6,self.lines[i].y1() + self.step * step.y() * self.rev - 6))
+                    self.dot = self.scene.addEllipse(self.inner_dots[i].x(),self.inner_dots[i].y(), 12, 12, self.pen,QBrush(QtCore.Qt.yellow, style = QtCore.Qt.SolidPattern))
+                else:
+                    self.inner_dots.append(QPointF(self.lines[i].x2() + self.step * step.x() * self.rev - 6,self.lines[i].y2() + self.step * step.y() * self.rev - 6))
+                    self.dot = self.scene.addEllipse(self.inner_dots[i].x(), self.inner_dots[i].y(), 12, 12, self.pen,QBrush(QtCore.Qt.yellow, style = QtCore.Qt.SolidPattern))
+                self.dots.append(self.dot)
+            
+            self.inner_lines = []
+            ind = len(self.inner_dots)
+            dist = 0
+            if(len(self.inner_dots) > 1):
+                i = len(self.lines_onScene)
+                while(i > 1):                    
+                    k = 0
+                    for j in range(i - 1):
+                        self.lines.append(QLineF(self.inner_dots[j + dist].x() + 6, self.inner_dots[j + dist].y() + 6, self.inner_dots[j + 1 + dist].x() + 6, self.inner_dots[j + 1 + dist].y() + 6))
+                        self.inner_lines.append(self.scene.addLine(self.lines[len(self.lines) - 1], self.pen))                        
+                        step = (self.lines[len(self.lines) - 1].p2() - self.lines[len(self.lines) - 1].p1())/self.max_step
+                        if(self.rev > 0):
+                            self.inner_dots.append(QPointF(self.lines[len(self.lines) - 1].x1() + self.step * step.x() * self.rev - 6,self.lines[len(self.lines) - 1].y1() + self.step * step.y() * self.rev - 6))
+                            self.dot = self.scene.addEllipse(self.inner_dots[len(self.inner_dots) - 1].x(),self.inner_dots[len(self.inner_dots) - 1].y(), 12, 12, self.pen,QBrush(QtCore.Qt.yellow, style = QtCore.Qt.SolidPattern))
+                        else:
+                            self.inner_dots.append(QPointF(self.lines[len(self.lines) - 1].x2() + self.step * step.x() * self.rev - 6,self.lines[len(self.lines) - 1].y2() + self.step * step.y() * self.rev - 6))
+                            self.dot = self.scene.addEllipse(self.inner_dots[len(self.inner_dots) - 1].x(),self.inner_dots[len(self.inner_dots) - 1].y(), 12, 12, self.pen,QBrush(QtCore.Qt.yellow, style = QtCore.Qt.SolidPattern))
+                        self.dots.append(self.dot)
+                        k += 1
+                    i -= 1
+                    dist = len(self.inner_dots) - k
+                                     
+            self.dots[len(self.dots)-1].setBrush(QBrush(QtCore.Qt.green, style = QtCore.Qt.SolidPattern))
+           
             self.isDraw = True
             self.update()
+
+
+        if(self.step == self.max_step):
+            self.step = 1
+            self.rev = self.rev * (-1)
+        else:
+            self.step += 1
         self.update()
 
 
