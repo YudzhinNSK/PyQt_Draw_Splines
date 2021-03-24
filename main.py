@@ -65,21 +65,9 @@ class MovingObject(QGraphicsEllipseItem):
             updated_cursor_x = updated_cursor_position.x() - orig_cursor_position.x() + orig_position.x()
             updated_cursor_y = updated_cursor_position.y() - orig_cursor_position.y() + orig_position.y()
             self.setPos(QPointF(updated_cursor_x, updated_cursor_y))
-
+        
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event) 
-        
-
-class RunObject(QGraphicsEllipseItem):
-    def __init__(self, x, y, r, parent1, parent2):
-        super().__init__(0, 0, r, r)
-        self.setPos(x, y)
-        self.setBrush(Qt.blue)
-        self.parent1 = parent1
-        self.parent2 = parent2
-
-    
-
 
 
 class Test(QGraphicsView):
@@ -99,7 +87,7 @@ class Test(QGraphicsView):
         self.inner_dots = []
         self.step = 1;
         self.max_step = 1000
-        self.par_step = 0.001
+        self.par_step = 0.03
         self.rev = 1
         self.bezier_path = []
         self.changed = True
@@ -138,11 +126,14 @@ class Test(QGraphicsView):
                 self.label.setText("Режим: добавление точек")                
                 self.delete = False
                 self.update()
-        
+        if(QKeyEvent.key() == 69):
+            for i in range(len(self.points)):
+                print(self.points[i].pos())
         if(QKeyEvent.key() == 16777248):
             self.redact = False
             self.delete = True
             self.label.setText("Режим: удаления точек")
+    
 
 
     def mousePressEvent(self, QMouseEvent):
@@ -151,7 +142,7 @@ class Test(QGraphicsView):
         self.mouse_posY = QMouseEvent.pos().y() + 70
         self.pressing = True
         self.update()
-                
+        
         if not self.mouse_posX or not self.pressing:
             return
 
@@ -160,6 +151,7 @@ class Test(QGraphicsView):
             self.scene.addItem(self.obj)
             self.points.append(self.obj)
             self.changed = True
+               
 
         if(self.delete):        
             i = MainWindowSlots.findDot(self.points, self.mouse_posX, self.mouse_posY)
@@ -173,27 +165,36 @@ class Test(QGraphicsView):
                 self.scene.removeItem(self.lines_onScene[0])
                 self.update()                
             self.changed = True
+
+    def mouseMoveEvent(self, QMouseEvent):
+        super().mouseMoveEvent(QMouseEvent)
+        if(self.redact == False):
+            pos_x = QMouseEvent.pos().x() + 80     
+            pos_y = QMouseEvent.pos().y() + 70
+            i = MainWindowSlots.findDot(self.points, pos_x, pos_y)
+            if( i != None):
+                self.changed = True
         
     def del_bez(self):
-        if(self.bezier_path != None):
-            for i in range(len(self.bezier_path) - 1):
+        if(len(self.bezier_path) != 0):
+            for i in range(len(self.bezier_path)):
                 self.scene.removeItem(self.bezier_path[i])
 
-
     def draw_bez(self):
-        self.bezier_points = self.get_bezier_points()
-        if(self.bezier_points != None):
-            for i in range(len(self.bezier_points) - 1):
-                self.bezier_path.append(self.scene.addLine(QLineF(self.bezier_points[i].x() + 6, self.bezier_points[i].y() + 6,
-                         self.bezier_points[i + 1].x()+ 6, self.bezier_points[i + 1].y() + 6), QPen(QtCore.Qt.blue)))
-            
+        if(self.changed == True):
+            self.del_bez()
+            self.bezier_points = self.get_bezier_points()
+            if(self.bezier_points != None):
+                for i in range(len(self.bezier_points) - 1):
+                    self.bezier_path.append(self.scene.addLine(QLineF(self.bezier_points[i].x() + 6, self.bezier_points[i].y() + 6,
+                        self.bezier_points[i + 1].x()+ 6, self.bezier_points[i + 1].y() + 6), QPen(QtCore.Qt.blue)))
+            self.changed = False
         self.update()
     
     def mouseReleaseEvent(self, QMouseEvent):
         super().mouseReleaseEvent(QMouseEvent)   
         self.pressing = False
         self.update()
-        self.changed = True
         
     def get_bezier_points(self):
         par = 0.0
@@ -213,10 +214,8 @@ class Test(QGraphicsView):
 
     def paintEvent(self, event):
         super().paintEvent(event)
-        if( len(self.lines_onScene) == len(self.points) == 1):
-            if(self.changed):                
-                self.del_bez()
-                self.changed = False
+        if(len(self.points) == 1):
+
             for j in range(len(self.lines_onScene)):
                 self.scene.removeItem(self.lines_onScene[j])
             for j in range(len(self.dots)):
@@ -261,11 +260,9 @@ class Test(QGraphicsView):
             else:
                 self.dot = self.scene.addEllipse(self.lines[0].x2() + self.step * step.x() * self.rev - 6,self.lines[0].y2() + self.step * step.y() * self.rev - 6, 12, 12, self.pen,QBrush(QtCore.Qt.green, style = QtCore.Qt.SolidPattern))
             self.dots.append(self.dot)
-        elif((len(self.points) > 2) ): #and not (self.redact)
-            if(self.changed):                
-                self.del_bez()
-                self.draw_bez()
-                self.changed = False
+
+        elif((len(self.points) > 2) ):
+            self.draw_bez()
             if(self.isDraw):
                 for j in range(len(self.lines_onScene)):
                     self.scene.removeItem(self.lines_onScene[j])
@@ -317,8 +314,6 @@ class Test(QGraphicsView):
            
             self.isDraw = True
             self.update()
-
-
         if(self.step == self.max_step):
             self.step = 1
             self.rev = self.rev * (-1)
